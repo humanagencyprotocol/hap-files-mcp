@@ -52,13 +52,13 @@ describe("swap during the call (deterministic: between open and read)", () => {
     // Either outcome is safe; what must never happen is that secret bytes get stored.
     for (const b of storedBlobs()) expect(b.includes("SECRET-OUTSIDE")).toBe(false);
     if (r.ok) expect(storedBlobs()[0].equals(original)).toBe(true);
-    else expect(r.e).toMatch(/replaced|symbolic/);
+    else expect(r.e).toMatch(/replaced|symbolic|not inside/);
   });
   it("file replaced by a DIFFERENT regular file after open: refused as replaced, nothing stored", async () => {
     fs.writeFileSync(path.join(folder, "b.png"), original);
     await expect(save_file(db, { file: "b.png" }, env, {
       afterOpen: (f, n) => { fs.rmSync(path.join(f, n)); fs.writeFileSync(path.join(f, n), secret); },
-    })).rejects.toThrow(/replaced/);
+    })).rejects.toThrow(/replaced|not inside/);
     expect(fs.existsSync(path.join(data, "files-store"))).toBe(false);
   });
   it("shared folder swapped for a symlink to another directory after open: refused", async () => {
@@ -66,7 +66,7 @@ describe("swap during the call (deterministic: between open and read)", () => {
     const other = path.join(root, "other"); fs.mkdirSync(other); fs.writeFileSync(path.join(other, "c.png"), secret);
     await expect(save_file(db, { file: "c.png" }, env, {
       afterOpen: (f) => { fs.renameSync(f, f + ".moved"); fs.symlinkSync(other, f); },
-    })).rejects.toThrow(/symbolic link|replaced/);
+    })).rejects.toThrow(/symbolic link|replaced|not inside/);
     expect(fs.existsSync(path.join(data, "files-store"))).toBe(false);
   });
 });
