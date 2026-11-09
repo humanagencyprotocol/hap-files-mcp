@@ -12,7 +12,7 @@ async function main() {
   const db = await createDb();
 
   const server = new Server(
-    { name: "files", version: "0.1.0" },
+    { name: "files", version: "0.1.1" },
     { capabilities: { tools: {} } },
   );
 
