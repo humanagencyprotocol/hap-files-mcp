@@ -104,7 +104,7 @@ describe("PDF: warnings (fixed sentences only)", () => {
     const base = pdf({ catalogExtra: `/AcroForm << /Fields [] /T (${evilText}) >>`, pageExtra: `/Annots [<< /Subtype /Text /Contents (${evilText}) >>]` });
     const d = await saved("all.pdf", Buffer.concat([base, Buffer.from("xref\n0 1\n0000000000 65535 f \ntrailer\n<< >>\nstartxref\n0\n%%EOF\n")]));
     expect(d.warnings.length).toBe(3);
-    const g = await w.call("get_document", { kind: "file", id: d.id });
+    const g = await w.call("get_file", { kind: "file", id: d.id });
     expect(g.data.warnings).toEqual(d.warnings);
     expect(JSON.stringify(d)).not.toContain(evilText);
   });
@@ -122,8 +122,8 @@ describe("PDF: real files", () => {
     const d = await saved("real.pdf", buf);
     expect(d.bytes).toBe(buf.length);
   });
-  it("a 25 MiB PDF is scanned in reasonable time", async () => {
-    const big = Buffer.concat([pdf({ tail: "" }), Buffer.alloc(25 * 1024 * 1024 - 400, 0x20), Buffer.from("\nstartxref\n0\n%%EOF\n")]).subarray(0, 25 * 1024 * 1024);
+  it("an 18 MB PDF is scanned in reasonable time", async () => {
+    const big = Buffer.concat([pdf({ tail: "" }), Buffer.alloc(18_000_000 - 400, 0x20), Buffer.from("\nstartxref\n0\n%%EOF\n")]).subarray(0, 18_000_000);
     const t = Date.now();
     await saved("big.pdf", big);
     expect(Date.now() - t).toBeLessThan(15000);

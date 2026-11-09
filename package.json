@@ -1,11 +1,11 @@
 {
-  "name": "@humanagencyp/documents-mcp",
+  "name": "@humanagencyp/files-mcp",
   "version": "0.0.0",
-  "description": "Documents MCP server for the Human Agency Protocol — saves files from a shared folder so an AI can name them (never handle their bytes)",
+  "description": "Files MCP server for the Human Agency Protocol — saves files from a shared folder so an AI can name them (never handle their bytes)",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/humanagencyprotocol/hap-documents-mcp.git"
+    "url": "git+https://github.com/humanagencyprotocol/hap-files-mcp.git"
   },
   "type": "module",
   "engines": {
@@ -13,7 +13,7 @@
   },
   "main": "dist/index.js",
   "bin": {
-    "documents-mcp": "dist/index.js"
+    "files-mcp": "dist/index.js"
   },
   "files": [
     "dist",

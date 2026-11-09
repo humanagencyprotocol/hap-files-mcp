@@ -9,19 +9,19 @@ import { detectType } from "../lib/detect.js";
 import { checkPdf } from "../lib/pdf.js";
 
 const sha256 = (b: Buffer) => createHash("sha256").update(b).digest("hex");
-const storeDir = (env: NodeJS.ProcessEnv) => path.join(dataDir(env), "documents-store");
+const storeDir = (env: NodeJS.ProcessEnv) => path.join(dataDir(env), "files-store");
 
 interface Row {
   id: string; filename: string; content_type: string; bytes: number; sha256: string; created_at: string; warnings: string;
 }
 
 /** Rules 1–6, in order. Every failure is a plain refusal and stores nothing. */
-export async function save_document(
+export async function save_file(
   db: Db, args: Record<string, any>, env: NodeJS.ProcessEnv = process.env, hooks: OpenHooks = {},
 ) {
-  const folder = env.DOCUMENTS_FOLDER;
+  const folder = env.FILES_FOLDER;
   if (!folder) {
-    throw new Refusal("Refused: no shared folder is set up for documents. A person must set the shared folder first.");
+    throw new Refusal("Refused: no shared folder is set up for files. A person must set the shared folder first.");
   }
   const name = requireBareName(args.file);                       // 1
   const { bytes } = readFromSharedFolder(folder, name, hooks);   // 2 + 3 (handle only; size)
@@ -50,7 +50,7 @@ export async function save_document(
   const ticketId = typeof args.ticket_id === "string" ? args.ticket_id : null;
   try {
     db.run(
-      "INSERT INTO documents (id, filename, content_type, bytes, sha256, created_at, ticket_id, warnings) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO files (id, filename, content_type, bytes, sha256, created_at, ticket_id, warnings) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       [id, filename, detected.contentType, bytes.length, digest, new Date().toISOString(), ticketId, JSON.stringify(warnings)],
     );
   } catch (e) {
@@ -60,11 +60,11 @@ export async function save_document(
   return { id, filename, contentType: detected.contentType, bytes: bytes.length, sha256: digest, warnings };
 }
 
-export async function list_documents(db: Db, args: Record<string, any>) {
+export async function list_files(db: Db, args: Record<string, any>) {
   let limit = Number.isFinite(args.limit) ? Math.floor(args.limit) : 50;
   limit = Math.min(Math.max(limit, 1), 500);
   const rows = db.all<Row>(
-    "SELECT id, filename, content_type, bytes, sha256, created_at FROM documents ORDER BY created_at DESC, rowid DESC LIMIT ?",
+    "SELECT id, filename, content_type, bytes, sha256, created_at FROM files ORDER BY created_at DESC, rowid DESC LIMIT ?",
     [limit],
   );
   return rows.map((r) => ({
@@ -73,14 +73,14 @@ export async function list_documents(db: Db, args: Record<string, any>) {
 }
 
 /** Same result shape as the ERP connector's get_document. */
-export async function get_document(db: Db, args: Record<string, any>, env: NodeJS.ProcessEnv = process.env) {
-  if (args.kind !== "file") throw new Error(`Unknown document kind: ${JSON.stringify(args.kind)} — expected "file".`);
+export async function get_file(db: Db, args: Record<string, any>, env: NodeJS.ProcessEnv = process.env) {
+  if (args.kind !== "file") throw new Error(`Unknown file kind: ${JSON.stringify(args.kind)} — expected "file".`);
   const id = typeof args.id === "string" ? args.id : "";
-  const row = /^[0-9a-f-]{36}$/.test(id) ? db.get<Row>("SELECT * FROM documents WHERE id = ?", [id]) : undefined;
-  if (!row) throw new Error(`Unknown document id: ${JSON.stringify(args.id)}`);
+  const row = /^[0-9a-f-]{36}$/.test(id) ? db.get<Row>("SELECT * FROM files WHERE id = ?", [id]) : undefined;
+  if (!row) throw new Error(`Unknown file id: ${JSON.stringify(args.id)}`);
   const buf = fs.readFileSync(path.join(storeDir(env), row.id));
   if (buf.length !== row.bytes || sha256(buf) !== row.sha256) {
-    throw new Error("The stored document no longer matches its fingerprint; it is not returned.");
+    throw new Error("The stored file no longer matches its fingerprint; it is not returned.");
   }
   return { filename: row.filename, contentType: row.content_type, contentBase64: buf.toString("base64"), sha256: row.sha256, warnings: JSON.parse(row.warnings) as string[] };
 }

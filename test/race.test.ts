@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createDb, type Db } from "../src/db.js";
-import { save_document } from "../src/tools/documents.js";
+import { save_file } from "../src/tools/files.js";
 import { png } from "./helpers.js";
 
 let root: string, folder: string, data: string, db: Db, env: NodeJS.ProcessEnv;
@@ -13,18 +13,28 @@ const original = png(500);
 beforeEach(async () => {
   root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "docs-race-")));
   folder = path.join(root, "shared"); data = path.join(root, "data"); fs.mkdirSync(folder);
-  env = { HAP_DATA_DIR: data, DOCUMENTS_FOLDER: folder };
+  env = { HAP_DATA_DIR: data, FILES_FOLDER: folder };
   db = await createDb(env);
   fs.writeFileSync(path.join(root, "secret.png"), secret);
 });
 afterEach(() => { db.close(); fs.rmSync(root, { recursive: true, force: true }); });
 
-const storedBlobs = () => !fs.existsSync(path.join(data, "documents-store")) ? [] : fs.readdirSync(path.join(data, "documents-store")).map((f) => fs.readFileSync(path.join(data, "documents-store", f)));
+const storedBlobs = () => !fs.existsSync(path.join(data, "files-store")) ? [] : fs.readdirSync(path.join(data, "files-store")).map((f) => fs.readFileSync(path.join(data, "files-store", f)));
+
+describe("a hard link on the opened handle", () => {
+  it("a second name created after open, before the handle is checked: refused, nothing stored", async () => {
+    fs.writeFileSync(path.join(folder, "h.png"), original);
+    await expect(save_file(db, { file: "h.png" }, env, {
+      afterOpen: (f, n) => { fs.linkSync(path.join(f, n), path.join(root, "second-name.png")); },
+    })).rejects.toThrow(/hard link/);
+    expect(storedBlobs().length).toBe(0);
+  });
+});
 
 describe("swap during the call (deterministic: between open and read)", () => {
   it("path swapped for a symlink to a secret after ALL checks, before the read: bytes come from the opened handle", async () => {
     fs.writeFileSync(path.join(folder, "h.png"), original);
-    const r = await save_document(db, { file: "h.png" }, env, {
+    const r = await save_file(db, { file: "h.png" }, env, {
       beforeRead: (f, n) => { fs.rmSync(path.join(f, n)); fs.symlinkSync(path.join(root, "secret.png"), path.join(f, n)); },
     });
     expect(storedBlobs().length).toBe(1);
@@ -33,7 +43,7 @@ describe("swap during the call (deterministic: between open and read)", () => {
   });
   it("file replaced by a symlink to a secret AFTER open: the stored bytes are still the opened file's", async () => {
     fs.writeFileSync(path.join(folder, "a.png"), original);
-    const r = await save_document(db, { file: "a.png" }, env, {
+    const r = await save_file(db, { file: "a.png" }, env, {
       afterOpen: (f, n) => {
         fs.rmSync(path.join(f, n));
         fs.symlinkSync(path.join(root, "secret.png"), path.join(f, n));
@@ -46,18 +56,18 @@ describe("swap during the call (deterministic: between open and read)", () => {
   });
   it("file replaced by a DIFFERENT regular file after open: refused as replaced, nothing stored", async () => {
     fs.writeFileSync(path.join(folder, "b.png"), original);
-    await expect(save_document(db, { file: "b.png" }, env, {
+    await expect(save_file(db, { file: "b.png" }, env, {
       afterOpen: (f, n) => { fs.rmSync(path.join(f, n)); fs.writeFileSync(path.join(f, n), secret); },
     })).rejects.toThrow(/replaced/);
-    expect(fs.existsSync(path.join(data, "documents-store"))).toBe(false);
+    expect(fs.existsSync(path.join(data, "files-store"))).toBe(false);
   });
   it("shared folder swapped for a symlink to another directory after open: refused", async () => {
     fs.writeFileSync(path.join(folder, "c.png"), original);
     const other = path.join(root, "other"); fs.mkdirSync(other); fs.writeFileSync(path.join(other, "c.png"), secret);
-    await expect(save_document(db, { file: "c.png" }, env, {
+    await expect(save_file(db, { file: "c.png" }, env, {
       afterOpen: (f) => { fs.renameSync(f, f + ".moved"); fs.symlinkSync(other, f); },
     })).rejects.toThrow(/symbolic link|replaced/);
-    expect(fs.existsSync(path.join(data, "documents-store"))).toBe(false);
+    expect(fs.existsSync(path.join(data, "files-store"))).toBe(false);
   });
 });
 
@@ -76,7 +86,7 @@ describe("swap during the call (real race: a second process flips the path while
     try {
       const end = Date.now() + 4000;
       while (Date.now() < end) {
-        try { await save_document(db, { file: "r.png" }, env); ok++; } catch { refused++; }
+        try { await save_file(db, { file: "r.png" }, env); ok++; } catch { refused++; }
       }
     } finally { flipper.kill("SIGKILL"); }
     const blobs = storedBlobs();

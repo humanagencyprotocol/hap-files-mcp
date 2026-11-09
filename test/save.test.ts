@@ -9,18 +9,18 @@ beforeAll(async () => { w = await startWorld(); });
 afterAll(async () => { await w.close(); });
 
 async function expectRefused(file: unknown, re: RegExp) {
-  const before = (await w.call("list_documents", {})).data.length;
+  const before = (await w.call("list_files", {})).data.length;
   const r = await w.save(file);
   expect(r.isError, JSON.stringify(r.data)).toBe(true);
   expect(r.data.error).toMatch(re);
-  expect((await w.call("list_documents", {})).data.length).toBe(before);
+  expect((await w.call("list_files", {})).data.length).toBe(before);
 }
 
 describe("tool surface", () => {
-  it("lists exactly the three tools, get_document has the ERP output shape", async () => {
+  it("lists exactly the three tools, get_file has the ERP output shape", async () => {
     const { tools } = await w.client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(["get_document", "list_documents", "save_document"]);
-    const gd: any = tools.find((t) => t.name === "get_document");
+    expect(tools.map((t) => t.name).sort()).toEqual(["get_file", "list_files", "save_file"]);
+    const gd: any = tools.find((t) => t.name === "get_file");
     expect(Object.keys(gd.outputSchema.properties)).toEqual(["filename", "contentType", "contentBase64", "sha256", "warnings"]);
     expect(gd.outputSchema.required).toEqual(["filename", "contentType", "contentBase64", "sha256"]);
   });
@@ -69,7 +69,7 @@ describe("rule 2: symlinks and non-regular files", () => {
     const link = path.join(w.root, "folder-link"); fs.symlinkSync(real, link);
     const w3 = await startWorldWithFolder(link);
     try {
-      const r = await w3.call("save_document", { file: "a.png" });
+      const r = await w3.call("save_file", { file: "a.png" });
       expect(r.isError).toBe(true); expect(r.data.error).toMatch(/symbolic link/);
       expect(w3.storeFiles()).toEqual([]);
     } finally { await w3.close(); }
@@ -80,7 +80,7 @@ describe("rule 2: symlinks and non-regular files", () => {
     const link = path.join(w.root, "parent-link"); fs.symlinkSync(real, link);
     const w3 = await startWorldWithFolder(path.join(link, "inner"));
     try {
-      const r = await w3.call("save_document", { file: "a.png" });
+      const r = await w3.call("save_file", { file: "a.png" });
       expect(r.isError, JSON.stringify(r.data)).toBe(false);
     } finally { await w3.close(); }
   });
@@ -91,24 +91,44 @@ describe("rule 2: symlinks and non-regular files", () => {
     execFileSync("mkfifo", [path.join(w.folder, "pipe.txt")]);
     await expectRefused("pipe.txt", /not a regular file/);
   });
+  it("refuses a file with a second hard link, by either name", async () => {
+    w.put("linked.png", png());
+    fs.linkSync(path.join(w.folder, "linked.png"), path.join(w.folder, "linked-too.png"));
+    await expectRefused("linked.png", /hard link/);
+    await expectRefused("linked-too.png", /hard link/);
+  });
+  it("refuses a hard link to a file outside the folder", async () => {
+    const outside = path.join(w.root, "outside-link.png");
+    fs.writeFileSync(outside, png(9));
+    fs.linkSync(outside, path.join(w.folder, "looks-local.png"));
+    await expectRefused("looks-local.png", /hard link/);
+  });
+  it("saves the file again once the second name is gone", async () => {
+    w.put("once.png", png());
+    fs.linkSync(path.join(w.folder, "once.png"), path.join(w.folder, "twice.png"));
+    await expectRefused("once.png", /hard link/);
+    fs.rmSync(path.join(w.folder, "twice.png"));
+    const ok = await w.save("once.png");
+    expect(ok.isError, JSON.stringify(ok.data)).toBe(false);
+  });
   it("refuses a missing file", async () => { await expectRefused("nothing-here.pdf", /no such file/); });
 });
 
 describe("rule 3: size", () => {
-  const MAX = 25 * 1024 * 1024;
-  it("25 MiB exactly passes; one byte over is refused and stores nothing", async () => {
+  const MAX = 18_000_000;
+  it("18,000,000 bytes exactly passes; one byte over is refused and stores nothing", async () => {
     const wz = await startWorld();
     try {
       wz.put("exact.txt", Buffer.alloc(MAX, 0x61));
       const ok = await wz.save("exact.txt");
       expect(ok.isError, JSON.stringify(ok.data)).toBe(false);
-      expect(ok.data.bytes).toBe(26214400);
+      expect(ok.data.bytes).toBe(18_000_000);
       expect(wz.storeFiles().length).toBe(1);
       wz.put("over.txt", Buffer.alloc(MAX + 1, 0x61));
       const bad = await wz.save("over.txt");
-      expect(bad.isError).toBe(true); expect(bad.data.error).toMatch(/larger than 25 MB/);
+      expect(bad.isError).toBe(true); expect(bad.data.error).toMatch(/larger than 18 MB/);
       expect(wz.storeFiles().length).toBe(1);
-      expect((await wz.call("list_documents", {})).data.length).toBe(1);
+      expect((await wz.call("list_files", {})).data.length).toBe(1);
     } finally { await wz.close(); }
   });
 });
@@ -188,7 +208,7 @@ describe("rule 4: type from content", () => {
     expect((await w.save("inline.md")).data.contentType).toBe("text/markdown");
     expect((await w.save("tag.txt")).data.contentType).toBe("text/plain");
   });
-  it("refuses an HTML document hidden behind a leading comment", async () => {
+  it("refuses an HTML file hidden behind a leading comment", async () => {
     w.put("c.md", "<!-- hi -->\n<html><body>x</body></html>");
     await expectRefused("c.md", /HTML, SVG and XML/);
   });
@@ -221,7 +241,7 @@ describe("rule 6: store and immutability", () => {
     const r = await w.save("shape.png");
     expect(Object.keys(r.data).sort()).toEqual(["bytes", "contentType", "filename", "id", "sha256", "warnings"]);
     expect(r.data.sha256).toBe(sha256(buf)); expect(r.data.bytes).toBe(buf.length); expect(r.data.warnings).toEqual([]);
-    const stored = path.join(w.dataDir, "documents-store", r.data.id);
+    const stored = path.join(w.dataDir, "files-store", r.data.id);
     expect(fs.readFileSync(stored).equals(buf)).toBe(true);
     expect(fs.statSync(stored).mode & 0o222).toBe(0);
   });
@@ -230,59 +250,59 @@ describe("rule 6: store and immutability", () => {
     const a = await w.save("twice.png"); const b = await w.save("twice.png");
     expect(a.data.id).not.toBe(b.data.id); expect(a.data.sha256).toBe(b.data.sha256);
     fs.writeFileSync(path.join(w.folder, "twice.png"), png(5));
-    const g = await w.call("get_document", { kind: "file", id: a.data.id });
+    const g = await w.call("get_file", { kind: "file", id: a.data.id });
     expect(Buffer.from(g.data.contentBase64, "base64").equals(buf)).toBe(true);
     expect(g.data.sha256).toBe(sha256(buf));
   });
   it("a stored copy that was tampered with is not returned", async () => {
     w.put("tamper.png", png(50)); const r = await w.save("tamper.png");
-    const stored = path.join(w.dataDir, "documents-store", r.data.id);
+    const stored = path.join(w.dataDir, "files-store", r.data.id);
     expect(() => fs.openSync(stored, "r+")).toThrow(); // read-only
     fs.chmodSync(stored, 0o644); fs.appendFileSync(stored, "x");
-    const g = await w.call("get_document", { kind: "file", id: r.data.id });
+    const g = await w.call("get_file", { kind: "file", id: r.data.id });
     expect(g.isError).toBe(true); expect(g.data.error).toMatch(/fingerprint/);
   });
   it("the index refuses UPDATE and DELETE", async () => {
     const { default: Database } = await import("better-sqlite3");
-    const db = new Database(path.join(w.dataDir, "documents.db"));
-    expect(() => db.prepare("UPDATE documents SET sha256 = 'x'").run()).toThrow(/immutable/);
-    expect(() => db.prepare("DELETE FROM documents").run()).toThrow(/immutable/);
+    const db = new Database(path.join(w.dataDir, "files.db"));
+    expect(() => db.prepare("UPDATE files SET sha256 = 'x'").run()).toThrow(/immutable/);
+    expect(() => db.prepare("DELETE FROM files").run()).toThrow(/immutable/);
     db.close();
   });
-  it("there is no tool that changes or deletes a document", async () => {
+  it("there is no tool that changes or deletes a file", async () => {
     const { tools } = await w.client.listTools();
     expect(tools.map((t) => t.name).some((n) => /update|delete|remove|overwrite/.test(n))).toBe(false);
   });
 });
 
-describe("list_documents and get_document", () => {
+describe("list_files and get_file", () => {
   it("lists newest first with the contract fields and honours limit", async () => {
-    const all = (await w.call("list_documents", {})).data;
+    const all = (await w.call("list_files", {})).data;
     expect(all.length).toBeGreaterThan(3);
     expect(Object.keys(all[0]).sort()).toEqual(["bytes", "contentType", "created_at", "filename", "id", "sha256"]);
     const dates = all.map((d: any) => d.created_at); expect([...dates].sort().reverse()).toEqual(dates);
-    expect((await w.call("list_documents", { limit: 2 })).data.length).toBe(2);
+    expect((await w.call("list_files", { limit: 2 })).data.length).toBe(2);
   });
-  it("get_document returns the ERP shape; refuses unknown kind and id", async () => {
+  it("get_file returns the ERP shape; refuses unknown kind and id", async () => {
     w.put("fresh.png", png(77)); const id = (await w.save("fresh.png")).data.id;
-    const g = await w.call("get_document", { kind: "file", id });
+    const g = await w.call("get_file", { kind: "file", id });
     expect(Object.keys(g.data).sort()).toEqual(["contentBase64", "contentType", "filename", "sha256", "warnings"]);
     expect(g.data.warnings).toEqual([]);
     expect(g.raw.structuredContent).toEqual(g.data);
-    expect((await w.call("get_document", { kind: "invoice-pdf", id })).isError).toBe(true);
-    expect((await w.call("get_document", { kind: "file", id: "../../etc/passwd" })).isError).toBe(true);
-    expect((await w.call("get_document", { kind: "file", id: "00000000-0000-0000-0000-000000000000" })).isError).toBe(true);
+    expect((await w.call("get_file", { kind: "invoice-pdf", id })).isError).toBe(true);
+    expect((await w.call("get_file", { kind: "file", id: "../../etc/passwd" })).isError).toBe(true);
+    expect((await w.call("get_file", { kind: "file", id: "00000000-0000-0000-0000-000000000000" })).isError).toBe(true);
   });
 });
 
 describe("no shared folder set", () => {
-  it("save_document refuses with a plain message; list and get still work", async () => {
+  it("save_file refuses with a plain message; list and get still work", async () => {
     const wn = await startWorld({ folder: false });
     try {
       const r = await wn.save("a.png");
       expect(r.isError).toBe(true); expect(r.data.error).toMatch(/no shared folder is set up/);
-      expect((await wn.call("list_documents", {})).data).toEqual([]);
-      expect((await wn.call("get_document", { kind: "file", id: "x" })).isError).toBe(true);
+      expect((await wn.call("list_files", {})).data).toEqual([]);
+      expect((await wn.call("get_file", { kind: "file", id: "x" })).isError).toBe(true);
     } finally { await wn.close(); }
   });
 });
@@ -294,13 +314,13 @@ import { DIST } from "./helpers.js";
 async function startWorldWithFolder(folder: string) {
   const dataDir = fsx.mkdtempSync(path.join(fsx.realpathSync(w.root), "data-"));
   const client = new Client({ name: "t", version: "0" });
-  await client.connect(new StdioClientTransport({ command: process.execPath, args: [DIST], env: { PATH: process.env.PATH ?? "", HAP_DATA_DIR: dataDir, DOCUMENTS_FOLDER: folder }, stderr: "ignore" }));
+  await client.connect(new StdioClientTransport({ command: process.execPath, args: [DIST], env: { PATH: process.env.PATH ?? "", HAP_DATA_DIR: dataDir, FILES_FOLDER: folder }, stderr: "ignore" }));
   return {
     async call(tool: string, args: Record<string, unknown>) {
       const raw: any = await client.callTool({ name: tool, arguments: args });
       return { isError: !!raw.isError, data: JSON.parse(raw.content[0].text) };
     },
-    storeFiles: () => (fsx.existsSync(path.join(dataDir, "documents-store")) ? fsx.readdirSync(path.join(dataDir, "documents-store")) : []),
+    storeFiles: () => (fsx.existsSync(path.join(dataDir, "files-store")) ? fsx.readdirSync(path.join(dataDir, "files-store")) : []),
     close: () => client.close(),
   };
 }

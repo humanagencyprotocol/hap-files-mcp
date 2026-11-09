@@ -2,4 +2,4 @@
 
 ## 0.0.0
 
-Unreleased. First build of the documents connector: `save_document`, `list_documents`, `get_document`.
+Unreleased. First build of the files connector: `save_file`, `list_files`, `get_file`.

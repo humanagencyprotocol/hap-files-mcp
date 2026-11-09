@@ -2,10 +2,10 @@ import { describe, it, expect } from "vitest";
 import { randomBytes } from "node:crypto";
 import { startWorld, sha256, PNG_HEAD } from "./helpers.js";
 
-const MAX = 25 * 1024 * 1024;
+const MAX = 18_000_000;
 
-describe("25 MiB over real stdio", () => {
-  it("save + get_document returns the exact bytes", async () => {
+describe("18 MB over real stdio", () => {
+  it("save + get_file returns the exact bytes", async () => {
     const w = await startWorld();
     try {
       const buf = Buffer.concat([PNG_HEAD, randomBytes(MAX - PNG_HEAD.length)]);
@@ -14,7 +14,7 @@ describe("25 MiB over real stdio", () => {
       const s = await w.save("huge.png");
       expect(s.isError, JSON.stringify(s.data)).toBe(false);
       expect(s.data.bytes).toBe(MAX); expect(s.data.sha256).toBe(sha256(buf));
-      const g = await w.call("get_document", { kind: "file", id: s.data.id });
+      const g = await w.call("get_file", { kind: "file", id: s.data.id });
       expect(g.isError).toBe(false);
       const back = Buffer.from(g.data.contentBase64, "base64");
       expect(back.length).toBe(MAX);

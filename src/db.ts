@@ -10,7 +10,7 @@ export interface Db {
 }
 
 const SCHEMA = `
-CREATE TABLE IF NOT EXISTS documents (
+CREATE TABLE IF NOT EXISTS files (
   id TEXT PRIMARY KEY,
   filename TEXT NOT NULL,
   content_type TEXT NOT NULL,
@@ -20,12 +20,12 @@ CREATE TABLE IF NOT EXISTS documents (
   ticket_id TEXT,
   warnings TEXT NOT NULL DEFAULT '[]'
 );
-CREATE INDEX IF NOT EXISTS idx_documents_created ON documents(created_at);
--- A saved document never changes: the index refuses UPDATE and DELETE too.
-CREATE TRIGGER IF NOT EXISTS documents_no_update BEFORE UPDATE ON documents
-BEGIN SELECT RAISE(ABORT, 'documents are immutable'); END;
-CREATE TRIGGER IF NOT EXISTS documents_no_delete BEFORE DELETE ON documents
-BEGIN SELECT RAISE(ABORT, 'documents are immutable'); END;
+CREATE INDEX IF NOT EXISTS idx_files_created ON files(created_at);
+-- A saved file never changes: the index refuses UPDATE and DELETE too.
+CREATE TRIGGER IF NOT EXISTS files_no_update BEFORE UPDATE ON files
+BEGIN SELECT RAISE(ABORT, 'files are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS files_no_delete BEFORE DELETE ON files
+BEGIN SELECT RAISE(ABORT, 'files are immutable'); END;
 `;
 
 export function dataDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -35,13 +35,13 @@ export function dataDir(env: NodeJS.ProcessEnv = process.env): string {
 export async function createDb(env: NodeJS.ProcessEnv = process.env): Promise<Db> {
   const dir = dataDir(env);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  const dbPath = join(dir, "documents.db");
+  const dbPath = join(dir, "files.db");
   const { default: Database } = await import("better-sqlite3");
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
   db.pragma("synchronous = NORMAL");
   db.exec(SCHEMA);
-  console.error(`[documents-mcp] using SQLite at ${dbPath}`);
+  console.error(`[files-mcp] using SQLite at ${dbPath}`);
   return {
     run: (sql, params = []) => { db.prepare(sql).run(...params); },
     get: <T>(sql: string, params: any[] = []) => db.prepare(sql).get(...params) as T | undefined,

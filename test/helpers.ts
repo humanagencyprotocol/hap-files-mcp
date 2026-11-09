@@ -20,12 +20,12 @@ export interface World {
 
 /** A real MCP server (the built dist/index.js) over stdio, on a real temp folder (real path, no symlinks above it). */
 export async function startWorld(opts: { folder?: boolean } = {}): Promise<World> {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "docs-mcp-")));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "files-mcp-")));
   const folder = path.join(root, "shared");
   const dataDir = path.join(root, "data");
   fs.mkdirSync(folder);
   const env: Record<string, string> = { PATH: process.env.PATH ?? "", HAP_DATA_DIR: dataDir };
-  if (opts.folder !== false) env.DOCUMENTS_FOLDER = folder;
+  if (opts.folder !== false) env.FILES_FOLDER = folder;
   const client = new Client({ name: "test", version: "0" });
   await client.connect(new StdioClientTransport({ command: process.execPath, args: [DIST], env, stderr: "ignore", maxBufferSize: 256 * 1024 * 1024 } as any));
   const call = async (tool: string, args: Record<string, unknown>) => {
@@ -36,8 +36,8 @@ export async function startWorld(opts: { folder?: boolean } = {}): Promise<World
   return {
     root, folder, dataDir, client, call,
     put(name, content) { const p = path.join(folder, name); fs.writeFileSync(p, content); return p; },
-    save: (file) => call("save_document", { file }),
-    storeFiles() { const d = path.join(dataDir, "documents-store"); return fs.existsSync(d) ? fs.readdirSync(d) : []; },
+    save: (file) => call("save_file", { file }),
+    storeFiles() { const d = path.join(dataDir, "files-store"); return fs.existsSync(d) ? fs.readdirSync(d) : []; },
     async close() { await client.close(); fs.rmSync(root, { recursive: true, force: true }); },
   };
 }

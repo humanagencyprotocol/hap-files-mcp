@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Refusal } from "./name.js";
 
-export const MAX_BYTES = 25 * 1024 * 1024; // 26214400
+export const MAX_BYTES = 18_000_000; // 18 MB, the most an email carries (the mail connector's manifest declares the same limit)
 
 /**
  * What protection each platform gets (also in README):
@@ -71,6 +71,8 @@ export function readFromSharedFolder(folderSetting: string, name: string, hooks:
 
     const st = fs.fstatSync(fd, { bigint: true });
     if (!st.isFile()) refuse("the file is not a regular file.");
+    // A hard link makes one file reachable under two names; the second name could be outside the folder.
+    if (st.nlink > 1n) refuse("the file has more than one name (a hard link).");
     if (st.dev !== pre.dev || st.ino !== pre.ino) refuse("the file was replaced while it was being opened.");
 
     // Inside the folder: Linux can tell us the handle's real path.
@@ -86,7 +88,7 @@ export function readFromSharedFolder(folderSetting: string, name: string, hooks:
     try { post = fs.lstatSync(full, { bigint: true }); } catch { refuse("the file was removed while it was being opened."); }
     if (post.isSymbolicLink() || post.dev !== st.dev || post.ino !== st.ino) refuse("the file was replaced while it was being opened.");
 
-    if (st.size > BigInt(MAX_BYTES)) refuse("the file is larger than 25 MB.");
+    if (st.size > BigInt(MAX_BYTES)) refuse("the file is larger than 18 MB.");
 
     hooks.beforeRead?.(folder, name);
 
@@ -103,7 +105,7 @@ export function readFromSharedFolder(folderSetting: string, name: string, hooks:
       }
       if (n === 0) break;
       total += n;
-      if (total > MAX_BYTES) refuse("the file is larger than 25 MB.");
+      if (total > MAX_BYTES) refuse("the file is larger than 18 MB.");
       chunks.push(Buffer.from(chunk.subarray(0, n)));
     }
     return { bytes: Buffer.concat(chunks, total) };
