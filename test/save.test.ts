@@ -25,7 +25,7 @@ describe("tool surface", () => {
     const wn = await startWorld({ folder: false });
     try {
       const { tools } = await wn.client.listTools();
-      expect(tools.find((t) => t.name === "save_file")!.description).toMatch(/No shared folder is set up yet: a person must choose one/);
+      expect(tools.find((t) => t.name === "save_file")!.description).toMatch(/No shared folder is set up yet.*Suggest a folder.*exact full path/s);
     } finally { await wn.close(); }
   });
   it("lists exactly the three tools, get_file has the ERP output shape", async () => {
@@ -316,7 +316,7 @@ describe("no shared folder set", () => {
     const wn = await startWorld({ folder: false });
     try {
       const r = await wn.save("a.png");
-      expect(r.isError).toBe(true); expect(r.data.error).toMatch(/no shared folder is set up/);
+      expect(r.isError).toBe(true); expect(r.data.error).toMatch(/no shared folder is set up/); expect(r.data.error).toMatch(/Edit credentials.*Shared folder.*Suggest a folder/s);
       expect((await wn.call("list_files", {})).data).toEqual([]);
       expect((await wn.call("get_file", { kind: "file", id: "x" })).isError).toBe(true);
     } finally { await wn.close(); }

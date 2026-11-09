@@ -22,7 +22,7 @@ export function folderSentence(env: NodeJS.ProcessEnv = process.env): string {
   const folder = env.FILES_FOLDER;
   return folder
     ? `The shared folder is: ${folder} — write the file there first (you need to be able to write to this computer), then call this with its plain name. `
-    : "No shared folder is set up yet: a person must choose one in the gateway (Connectors, Files) before any file can be saved. ";
+    : "No shared folder is set up yet, so no file can be saved. A person opens **Connectors**, the card **Files**, enters the full path under **Shared folder** and presses **Save & Encrypt**. Suggest a folder (for example a new folder called suveren-files in their Documents) and give the person its exact full path to type; the folder must exist. Later they change it under **Edit credentials**. ";
 }
 
 /** The MCP tool surface. The folder comes from the environment the gateway started this connector with. */

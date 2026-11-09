@@ -34,7 +34,7 @@ function refuse(message: string): never {
 /** The shared folder itself must be a real directory, not a link. Its own parents may be links (macOS /tmp, /var). */
 function assertFolderNotLink(folder: string) {
   let st: fs.Stats;
-  try { st = fs.lstatSync(folder); } catch { refuse(`the shared folder does not exist (${folder}). A person must create it or choose another in the gateway (Connectors, Files).`); }
+  try { st = fs.lstatSync(folder); } catch { refuse(`the shared folder does not exist (${folder}). A person creates it, or opens **Connectors**, the card **Files**, **Edit credentials** and enters the full path of another folder under **Shared folder**.`); }
   if (st.isSymbolicLink()) refuse("the shared folder is a symbolic link.");
   if (!st.isDirectory()) refuse("the shared folder is not a folder.");
 }
