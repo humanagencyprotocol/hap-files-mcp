@@ -21,7 +21,7 @@ export async function save_file(
 ) {
   const folder = env.FILES_FOLDER;
   if (!folder) {
-    throw new Refusal("Refused: no shared folder is set up for files. A person must set the shared folder first.");
+    throw new Refusal("Refused: no shared folder is set up for files. A person must choose the shared folder in the gateway (Connectors, Files) before any file can be saved. Tell the person; do not try another way.");
   }
   const name = requireBareName(args.file);                       // 1
   const { bytes } = readFromSharedFolder(folder, name, hooks);   // 2 + 3 (handle only; size)

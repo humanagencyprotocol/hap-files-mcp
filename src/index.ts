@@ -6,7 +6,7 @@ import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprot
 
 import { createDb } from "./db.js";
 import { save_file, list_files, get_file } from "./tools/files.js";
-import { TOOL_DEFINITIONS } from "./tools/definitions.js";
+import { toolDefinitions } from "./tools/definitions.js";
 
 async function main() {
   const db = await createDb();
@@ -16,7 +16,7 @@ async function main() {
     { capabilities: { tools: {} } },
   );
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOL_DEFINITIONS }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: toolDefinitions() }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;

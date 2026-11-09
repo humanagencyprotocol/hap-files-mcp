@@ -34,7 +34,7 @@ function refuse(message: string): never {
 /** The shared folder itself must be a real directory, not a link. Its own parents may be links (macOS /tmp, /var). */
 function assertFolderNotLink(folder: string) {
   let st: fs.Stats;
-  try { st = fs.lstatSync(folder); } catch { refuse("the shared folder does not exist."); }
+  try { st = fs.lstatSync(folder); } catch { refuse(`the shared folder does not exist (${folder}). A person must create it or choose another in the gateway (Connectors, Files).`); }
   if (st.isSymbolicLink()) refuse("the shared folder is a symbolic link.");
   if (!st.isDirectory()) refuse("the shared folder is not a folder.");
 }
@@ -51,7 +51,7 @@ export function readFromSharedFolder(folderSetting: string, name: string, hooks:
   if (path.dirname(full) !== folder) refuse("the file must be directly in the shared folder.");
 
   let pre: fs.BigIntStats;
-  try { pre = fs.lstatSync(full, { bigint: true }); } catch { refuse("no such file in the shared folder."); }
+  try { pre = fs.lstatSync(full, { bigint: true }); } catch { refuse(`no such file "${name}" in the shared folder (${folder}). Write the file into that folder, then call save_file again with its plain name.`); }
   if (pre.isSymbolicLink()) refuse("the file is a symbolic link.");
   if (!pre.isFile()) refuse("the file is not a regular file.");
 
@@ -63,7 +63,7 @@ export function readFromSharedFolder(folderSetting: string, name: string, hooks:
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
     if (code === "ELOOP" || code === "EMLINK") refuse("the file is a symbolic link.");
-    if (code === "ENOENT") refuse("no such file in the shared folder.");
+    if (code === "ENOENT") refuse(`no such file "${name}" in the shared folder (${folder}). Write the file into that folder, then call save_file again with its plain name.`);
     refuse("the file could not be opened.");
   }
   try {
