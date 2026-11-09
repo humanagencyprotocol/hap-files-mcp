@@ -1,6 +1,6 @@
 {
   "name": "@humanagencyp/files-mcp",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Files MCP server for the Human Agency Protocol — saves files from a shared folder so an AI can name them (never handle their bytes)",
   "license": "MIT",
   "repository": {
