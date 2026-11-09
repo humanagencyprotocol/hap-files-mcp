@@ -25,7 +25,7 @@ function decodeNameEscapes(s: string): string {
 const END = "(?=[\\s\\0()<>\\[\\]{}/%]|$)";
 const tok = (name: string) => new RegExp(`/${name}${END}`);
 
-const SCRIPT = [tok("JavaScript"), tok("JS"), tok("OpenAction")];
+const SCRIPT = [tok("JavaScript"), tok("JS"), tok("Launch")];
 const EMBEDDED = [tok("EmbeddedFile"), tok("EmbeddedFiles"), tok("EF"), tok("FileAttachment")];
 const ENCRYPT = tok("Encrypt");
 const FORM = [tok("AcroForm"), tok("XFA")];
@@ -67,6 +67,42 @@ function inflateStreams(buf: Buffer): string[] {
   return out;
 }
 
+const GOTO = new RegExp(`/S\\s*/GoTo${END}`);
+
+/** Index just after the matching ">>" of the dictionary that starts at `at` ("<<"), or -1. */
+function dictEnd(t: string, at: number): number {
+  let depth = 0;
+  for (let i = at; i < t.length - 1; i++) {
+    if (t[i] === "<" && t[i + 1] === "<") { depth++; i++; }
+    else if (t[i] === ">" && t[i + 1] === ">") { depth--; i++; if (depth === 0) return i + 1; }
+  }
+  return -1;
+}
+
+/** Is the value starting at `at` a harmless open action: a destination array, or an action dictionary of type /GoTo? */
+function harmlessAction(t: string, at: number, all: string[], depth = 0): boolean {
+  const rest = t.slice(at).trimStart();
+  const pos = t.length - rest.length;
+  if (rest.startsWith("[")) return true;
+  if (rest.startsWith("<<")) {
+    const end = dictEnd(t, pos);
+    return end > 0 && GOTO.test(t.slice(pos, end));
+  }
+  const ref = /^(\d+)\s+(\d+)\s+R/.exec(rest);
+  if (ref && depth < 3) {
+    const def = new RegExp(`(?:^|[\\s>\\]])${ref[1]}\\s+${ref[2]}\\s+obj\\b`, "g");
+    let found = 0;
+    for (const x of all) {
+      for (const m of x.matchAll(def)) {
+        found++;
+        if (!harmlessAction(x, m.index! + m[0].length, all, depth + 1)) return false;
+      }
+    }
+    return found > 0; // not found (e.g. inside an object stream): cannot be verified
+  }
+  return false;
+}
+
 export function checkPdf(bytes: Buffer): string[] {
   const raw = decodeNameEscapes(bytes.toString("latin1"));
   const texts = [raw];
@@ -86,6 +122,13 @@ export function checkPdf(bytes: Buffer): string[] {
 
   const any = (res: RegExp[]) => texts.some((t) => res.some((r) => r.test(t)));
   if (any(SCRIPT)) throw refuse("this PDF contains a script (JavaScript or an action that runs on open).");
+  for (const t of texts) {
+    for (const m of t.matchAll(/\/OpenAction(?=[\s\0()<>\[\]{}\/%]|$)/g)) {
+      if (!harmlessAction(t, m.index! + m[0].length, texts)) {
+        throw refuse("this PDF contains a script (JavaScript or an action that runs on open).");
+      }
+    }
+  }
   if (any(EMBEDDED)) throw refuse("this PDF contains an embedded file.");
 
   const warnings: string[] = [];

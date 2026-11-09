@@ -17,11 +17,22 @@ const MP4_BRANDS = new Set([
   "isom", "iso2", "iso3", "iso4", "iso5", "iso6", "mp41", "mp42", "avc1", "dash", "msnv", "mmp4", "M4V ", "M4VH", "M4VP",
 ]);
 
-// Markup that starts a text file: HTML (WHATWG sniffing list), XML/SVG.
-const MARKUP_START = new RegExp(
-  "^(?:<!doctype html|<!--|<\\?xml|<svg|<html|<head|<body|<script|<iframe|<style|<title|<table|<div|<font|<h[1-6]|<a|<b|<br|<p|<img|<form|<math|<link|<meta|<object|<embed)(?=[\\s>/])",
+// A whole HTML / SVG / XML document starts with one of these (after whitespace and comments).
+// Markdown that merely contains inline HTML (<div>, <b>, <img> ...) is not a document and passes.
+const DOCUMENT_START = new RegExp(
+  "^(?:<!doctype|<\\?xml|<svg|<html|<head|<body|<script|<iframe|<style|<title|<meta|<link)(?=[\\s>/])",
   "i",
 );
+
+function startsWithMarkupDocument(text: string): boolean {
+  let t = text.replace(/^\uFEFF/, "").trimStart();
+  while (t.startsWith("<!--")) {
+    const end = t.indexOf("-->");
+    if (end < 0) return false;
+    t = t.slice(end + 3).trimStart();
+  }
+  return DOCUMENT_START.test(t);
+}
 
 export function detectType(bytes: Buffer, filename: string): Detection {
   if (bytes.length === 0) return { ok: false, message: "Refused: the file is empty." };
@@ -55,8 +66,7 @@ export function detectType(bytes: Buffer, filename: string): Detection {
   } catch {
     return { ok: false, message: NOT_SUPPORTED };
   }
-  const lead = text.replace(/^﻿/, "").trimStart();
-  if (MARKUP_START.test(lead)) {
+  if (startsWithMarkupDocument(text)) {
     return { ok: false, message: "Refused: HTML, SVG and XML files are not supported." };
   }
   return { ok: true, contentType: /\.md$/i.test(filename) ? "text/markdown" : "text/plain" };

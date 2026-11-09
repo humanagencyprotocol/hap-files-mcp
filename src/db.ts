@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS documents (
   bytes INTEGER NOT NULL,
   sha256 TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  ticket_id TEXT
+  ticket_id TEXT,
+  warnings TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS idx_documents_created ON documents(created_at);
 -- A saved document never changes: the index refuses UPDATE and DELETE too.

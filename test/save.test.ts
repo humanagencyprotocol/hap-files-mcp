@@ -21,7 +21,8 @@ describe("tool surface", () => {
     const { tools } = await w.client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(["get_document", "list_documents", "save_document"]);
     const gd: any = tools.find((t) => t.name === "get_document");
-    expect(Object.keys(gd.outputSchema.properties)).toEqual(["filename", "contentType", "contentBase64", "sha256"]);
+    expect(Object.keys(gd.outputSchema.properties)).toEqual(["filename", "contentType", "contentBase64", "sha256", "warnings"]);
+    expect(gd.outputSchema.required).toEqual(["filename", "contentType", "contentBase64", "sha256"]);
   });
 });
 
@@ -73,14 +74,14 @@ describe("rule 2: symlinks and non-regular files", () => {
       expect(w3.storeFiles()).toEqual([]);
     } finally { await w3.close(); }
   });
-  it("refuses when a parent of the shared folder is a symlink", async () => {
+  it("allows a shared folder whose own parents are symlinks (macOS /tmp, /var)", async () => {
     const real = path.join(w.root, "parent-real"); fs.mkdirSync(path.join(real, "inner"), { recursive: true });
     fs.writeFileSync(path.join(real, "inner", "a.png"), png());
     const link = path.join(w.root, "parent-link"); fs.symlinkSync(real, link);
     const w3 = await startWorldWithFolder(path.join(link, "inner"));
     try {
       const r = await w3.call("save_document", { file: "a.png" });
-      expect(r.isError).toBe(true); expect(r.data.error).toMatch(/symbolic link/);
+      expect(r.isError, JSON.stringify(r.data)).toBe(false);
     } finally { await w3.close(); }
   });
   it("refuses a directory", async () => {
@@ -181,6 +182,16 @@ describe("rule 4: type from content", () => {
       await expectRefused(`m-${n.replace(/ /g, "_")}.${ext}`, /HTML, SVG and XML/);
     }
   });
+  it("Markdown with inline HTML passes as Markdown; plain text starting with a tag passes as text", async () => {
+    w.put("inline.md", "<div align=\"center\">\n\n# Title\n\n</div>\n\n<img src=\"x.png\"> and <b>bold</b>");
+    w.put("tag.txt", "<b>bold</b> text");
+    expect((await w.save("inline.md")).data.contentType).toBe("text/markdown");
+    expect((await w.save("tag.txt")).data.contentType).toBe("text/plain");
+  });
+  it("refuses an HTML document hidden behind a leading comment", async () => {
+    w.put("c.md", "<!-- hi -->\n<html><body>x</body></html>");
+    await expectRefused("c.md", /HTML, SVG and XML/);
+  });
   it("still accepts text that merely mentions markup later on", async () => {
     w.put("mention.md", "Use the <svg> element carefully.");
     expect((await w.save("mention.md")).isError).toBe(false);
@@ -255,7 +266,8 @@ describe("list_documents and get_document", () => {
   it("get_document returns the ERP shape; refuses unknown kind and id", async () => {
     w.put("fresh.png", png(77)); const id = (await w.save("fresh.png")).data.id;
     const g = await w.call("get_document", { kind: "file", id });
-    expect(Object.keys(g.data).sort()).toEqual(["contentBase64", "contentType", "filename", "sha256"]);
+    expect(Object.keys(g.data).sort()).toEqual(["contentBase64", "contentType", "filename", "sha256", "warnings"]);
+    expect(g.data.warnings).toEqual([]);
     expect(g.raw.structuredContent).toEqual(g.data);
     expect((await w.call("get_document", { kind: "invoice-pdf", id })).isError).toBe(true);
     expect((await w.call("get_document", { kind: "file", id: "../../etc/passwd" })).isError).toBe(true);

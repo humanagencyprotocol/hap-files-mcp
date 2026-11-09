@@ -12,6 +12,7 @@ export const DOCUMENT_OUTPUT_SCHEMA = {
     contentType: { type: "string", title: "Content type" },
     contentBase64: { type: "string", title: "Content (base64)" },
     sha256: { type: "string", title: "SHA-256 fingerprint", description: "Of the raw bytes of the saved document." },
+    warnings: { type: "array", items: { type: "string" }, title: "Warnings", description: "Fixed sentences written by the connector when the document was saved." },
   },
   required: ["filename", "contentType", "contentBase64", "sha256"],
 };

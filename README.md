@@ -8,7 +8,7 @@ and never handles its bytes.
 
 | Variable | Meaning |
 |---|---|
-| `DOCUMENTS_FOLDER` | The shared folder, set by a person (a full path, no symbolic link in it). Unset: `save_document` refuses; the other tools work. |
+| `DOCUMENTS_FOLDER` | The shared folder, set by a person (a full path; the folder itself must not be a symbolic link, its parents may be). Unset: `save_document` refuses; the other tools work. |
 | `HAP_DATA_DIR` | Data directory (default `~/.hap`). Documents are stored in `<dataDir>/documents-store/`, the index in `<dataDir>/documents.db` (SQLite). |
 
 ## Tools
@@ -17,17 +17,17 @@ and never handles its bytes.
 |---|---|---|
 | `save_document` | `{ file }` a plain file name in the shared folder | `{ id, filename, contentType, bytes, sha256, warnings[] }` |
 | `list_documents` | `{ limit? }` | `[{ id, filename, contentType, bytes, sha256, created_at }]` |
-| `get_document` | `{ kind: "file", id }` | `{ filename, contentType, contentBase64, sha256 }` (same shape as the ERP connector; internal to the gateway) |
+| `get_document` | `{ kind: "file", id }` | `{ filename, contentType, contentBase64, sha256, warnings }` (ERP shape plus the fixed warning sentences recorded at save; internal to the gateway) |
 
 ## `save_document`, in this order (each failure is a plain refusal and stores nothing)
 
 1. `file` is a bare name: no separator (`/` or `\`), not `.` or `..`, no NUL, not absolute.
-2. Not a symbolic link, and no component of the shared-folder path is one. Opened without following links, then the
+2. Not a symbolic link; the shared folder itself is not one (its parents may be) and must not be swapped for one during the call. Opened without following links, then the
    open handle is checked (regular file, same file as the path names, inside the folder). Read from that handle only.
 3. At most 25 MiB (26214400 bytes). One byte more is refused.
 4. Type from the content: PDF, PNG, JPEG, WebP, GIF, MP4, WebM, Markdown (`.md`), plain text (valid UTF-8, no NUL).
-   Everything else is refused, including Word, Excel, SVG, HTML, XML and zip.
-5. PDF: refused if it holds JavaScript, any `/OpenAction`, an embedded file, encryption, or encoding that cannot be
+   Everything else is refused, including Word, Excel, SVG, zip and whole HTML/XML documents. Markdown with inline HTML passes.
+5. PDF: refused if it holds JavaScript, a `/Launch` action, an `/OpenAction` other than a destination or `/GoTo`, an embedded file, encryption, or encoding that cannot be
    inspected. Warnings (fixed sentences): form fields, annotations, incremental updates.
 6. The bytes read in step 2 are copied under a server-generated id (UUID), SHA-256 of exactly those bytes. Files are
    created read-only and never overwritten; the index refuses UPDATE and DELETE. The same bytes saved twice get two ids.
@@ -42,8 +42,8 @@ Node has no `openat`, so the strongest protection (resolving every component rel
 |---|---|---|---|
 | File itself is a link | refused (lstat, then `O_NOFOLLOW`) | same | refused (lstat); no `O_NOFOLLOW` in Node |
 | File swapped for a link between check and open | open fails (`ELOOP`) | same | not prevented; caught afterwards only if the file's identity changed |
-| Folder path component is a link | refused (lstat of every component) | same | same |
-| Parent swapped for a link during the call | detected after open (components and dev/ino re-checked) | detected after open (also `/proc/self/fd` path must equal the expected path) | detected after open as on macOS |
+| Shared folder itself is a link | refused (lstat; re-checked after open) | same | same |
+| Folder swapped for a link during the call | detected after open (folder lstat/realpath and file dev/ino re-checked) | detected after open (also `/proc/self/fd` path must equal realpath(folder)/name) | detected after open as on macOS |
 | Reading | from the open handle, once | same | same |
 | Named pipe / device | refused (`O_NONBLOCK`, fstat) | same | fstat |
 

@@ -10,11 +10,11 @@ export const MAX_BYTES = 25 * 1024 * 1024; // 26214400
  *    (macOS, Linux), so a swap to a symlink between check and open fails at open (ELOOP).
  *    On Windows Node has no O_NOFOLLOW: lstat before, and the handle is compared (dev/ino) with the
  *    path again after opening; a swap in that window is detected only if it changes the file identity.
- *  - Parent components: every component of the shared-folder path is lstat-ed and none may be a
- *    symlink. Node cannot open relative to a directory handle (no openat), so a parent swapped
- *    during the call is not prevented by the OS; it is detected afterwards (Linux: the handle's real
- *    path from /proc/self/fd must equal the expected path; macOS and Windows: components and the
- *    file's dev/ino are checked again after open).
+ *  - The shared folder itself must not be a symlink (lstat), and must resolve to the same real path
+ *    after the open. Its own parents may be links (macOS /tmp, /var). Node cannot open relative to a
+ *    directory handle (no openat), so a swap of the folder during the call is not prevented by the OS;
+ *    it is detected afterwards (Linux: the handle's real path from /proc/self/fd must equal
+ *    realpath(folder)/name; all platforms: folder lstat/realpath and the file's dev/ino re-checked).
  *  - Reading happens from the opened handle only. The bytes that are hashed, type-checked and stored
  *    are the bytes read from that handle once.
  *  - O_NONBLOCK keeps a FIFO from blocking the server; a non-regular handle is refused by fstat.
@@ -31,15 +31,12 @@ function refuse(message: string): never {
   throw new Refusal(`Refused: ${message}`);
 }
 
-function assertNoSymlinkComponents(abs: string) {
-  const parsed = path.parse(abs);
-  let cur = parsed.root;
-  for (const part of abs.slice(parsed.root.length).split(path.sep).filter(Boolean)) {
-    cur = path.join(cur, part);
-    let st: fs.Stats;
-    try { st = fs.lstatSync(cur); } catch { refuse("the shared folder does not exist."); }
-    if (st.isSymbolicLink()) refuse("the shared folder path contains a symbolic link.");
-  }
+/** The shared folder itself must be a real directory, not a link. Its own parents may be links (macOS /tmp, /var). */
+function assertFolderNotLink(folder: string) {
+  let st: fs.Stats;
+  try { st = fs.lstatSync(folder); } catch { refuse("the shared folder does not exist."); }
+  if (st.isSymbolicLink()) refuse("the shared folder is a symbolic link.");
+  if (!st.isDirectory()) refuse("the shared folder is not a folder.");
 }
 
 export interface OpenedFile { bytes: Buffer }
@@ -47,8 +44,8 @@ export interface OpenedFile { bytes: Buffer }
 export function readFromSharedFolder(folderSetting: string, name: string, hooks: OpenHooks = {}): OpenedFile {
   if (!path.isAbsolute(folderSetting)) refuse("the shared folder must be set as a full path.");
   const folder = path.resolve(folderSetting);
-  assertNoSymlinkComponents(folder);
-  if (!fs.statSync(folder).isDirectory()) refuse("the shared folder is not a folder.");
+  assertFolderNotLink(folder);
+  const realFolder = fs.realpathSync(folder);
 
   const full = path.join(folder, name);
   if (path.dirname(full) !== folder) refuse("the file must be directly in the shared folder.");
@@ -80,10 +77,11 @@ export function readFromSharedFolder(folderSetting: string, name: string, hooks:
     if (process.platform === "linux") {
       let real: string;
       try { real = fs.readlinkSync(`/proc/self/fd/${fd}`); } catch { refuse("the file location could not be verified."); }
-      if (real !== full) refuse("the file is not inside the shared folder.");
+      if (real !== path.join(realFolder, name)) refuse("the file is not inside the shared folder.");
     }
-    // Everywhere: the path still names the same file and no component became a link.
-    assertNoSymlinkComponents(folder);
+    // Everywhere: the path still names the same file and the folder was not replaced by a link.
+    assertFolderNotLink(folder);
+    if (fs.realpathSync(folder) !== realFolder) refuse("the shared folder was replaced while the file was being opened.");
     let post: fs.BigIntStats;
     try { post = fs.lstatSync(full, { bigint: true }); } catch { refuse("the file was removed while it was being opened."); }
     if (post.isSymbolicLink() || post.dev !== st.dev || post.ino !== st.ino) refuse("the file was replaced while it was being opened.");

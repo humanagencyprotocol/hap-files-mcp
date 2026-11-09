@@ -27,8 +27,22 @@ describe("PDF: refuse scripts", () => {
   it("clean PDF passes with no warnings", async () => { expect((await saved("clean.pdf", pdf())).warnings).toEqual([]); });
   it("refuses /JavaScript in an action", async () => { await refused("js.pdf", pdf({ pageExtra: `/AA << /O ${JS} >>` }), /script/); });
   it("refuses /OpenAction with JavaScript", async () => { await refused("oa.pdf", pdf({ catalogExtra: `/OpenAction ${JS}` }), /script/); });
-  it("refuses any /OpenAction (also a plain destination, strict reading of the contract)", async () => {
-    await refused("oa2.pdf", pdf({ catalogExtra: "/OpenAction [3 0 R /Fit]" }), /script/);
+  it("allows a harmless /OpenAction: destination array, /GoTo dictionary, reference to either", async () => {
+    await saved("oa-dest.pdf", pdf({ catalogExtra: "/OpenAction [3 0 R /Fit]" }));
+    await saved("oa-goto.pdf", pdf({ catalogExtra: "/OpenAction << /S /GoTo /D [3 0 R /Fit] >>" }));
+    await saved("oa-ref.pdf", pdf({ catalogExtra: "/OpenAction 6 0 R", extraObjects: "6 0 obj\n[3 0 R /Fit]\nendobj\n" }));
+    await saved("oa-ref2.pdf", pdf({ catalogExtra: "/OpenAction 6 0 R", extraObjects: "6 0 obj\n<< /S /GoTo /D [3 0 R /Fit] >>\nendobj\n" }));
+  });
+  it("refuses /OpenAction that launches or runs anything else, or cannot be verified", async () => {
+    await refused("oa-launch.pdf", pdf({ catalogExtra: "/OpenAction << /S /Launch /F (cmd.exe) >>" }), /script/);
+    await refused("oa-launch-ref.pdf", pdf({ catalogExtra: "/OpenAction 6 0 R", extraObjects: "6 0 obj\n<< /S /Launch /F (x) >>\nendobj\n" }), /script/);
+    await refused("oa-uri.pdf", pdf({ catalogExtra: "/OpenAction << /S /URI /URI (http://x) >>" }), /script/);
+    await refused("oa-missing.pdf", pdf({ catalogExtra: "/OpenAction 9 0 R" }), /script/);
+    await refused("oa-decoy.pdf", pdf({ catalogExtra: "/OpenAction 6 0 R", extraObjects: "(decoy\n6 0 obj [1])\n6 0 obj\n<< /S /Launch >>\nendobj\n" }), /script/);
+    await refused("oa-objstm.pdf", pdfWithObjStm("<< /Type /Catalog /OpenAction << /S /Launch >> >>"), /script/);
+  });
+  it("refuses a /Launch action anywhere", async () => {
+    await refused("launch.pdf", pdf({ pageExtra: "/Annots [<< /Subtype /Link /A << /S /Launch /F (x) >> >>]" }), /script/);
   });
   it("refuses a bare /JS entry", async () => { await refused("bare-js.pdf", pdf({ pageExtra: "/JS (x)" }), /script/); });
   it("refuses a hex-escaped name (/Java#53cript)", async () => {
@@ -90,6 +104,8 @@ describe("PDF: warnings (fixed sentences only)", () => {
     const base = pdf({ catalogExtra: `/AcroForm << /Fields [] /T (${evilText}) >>`, pageExtra: `/Annots [<< /Subtype /Text /Contents (${evilText}) >>]` });
     const d = await saved("all.pdf", Buffer.concat([base, Buffer.from("xref\n0 1\n0000000000 65535 f \ntrailer\n<< >>\nstartxref\n0\n%%EOF\n")]));
     expect(d.warnings.length).toBe(3);
+    const g = await w.call("get_document", { kind: "file", id: d.id });
+    expect(g.data.warnings).toEqual(d.warnings);
     expect(JSON.stringify(d)).not.toContain(evilText);
   });
   it("a linearized file's two startxref are not an incremental update", async () => {

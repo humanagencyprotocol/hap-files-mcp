@@ -12,7 +12,7 @@ const sha256 = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 const storeDir = (env: NodeJS.ProcessEnv) => path.join(dataDir(env), "documents-store");
 
 interface Row {
-  id: string; filename: string; content_type: string; bytes: number; sha256: string; created_at: string;
+  id: string; filename: string; content_type: string; bytes: number; sha256: string; created_at: string; warnings: string;
 }
 
 /** Rules 1–6, in order. Every failure is a plain refusal and stores nothing. */
@@ -50,8 +50,8 @@ export async function save_document(
   const ticketId = typeof args.ticket_id === "string" ? args.ticket_id : null;
   try {
     db.run(
-      "INSERT INTO documents (id, filename, content_type, bytes, sha256, created_at, ticket_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [id, filename, detected.contentType, bytes.length, digest, new Date().toISOString(), ticketId],
+      "INSERT INTO documents (id, filename, content_type, bytes, sha256, created_at, ticket_id, warnings) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [id, filename, detected.contentType, bytes.length, digest, new Date().toISOString(), ticketId, JSON.stringify(warnings)],
     );
   } catch (e) {
     fs.rmSync(dest, { force: true });
@@ -82,5 +82,5 @@ export async function get_document(db: Db, args: Record<string, any>, env: NodeJ
   if (buf.length !== row.bytes || sha256(buf) !== row.sha256) {
     throw new Error("The stored document no longer matches its fingerprint; it is not returned.");
   }
-  return { filename: row.filename, contentType: row.content_type, contentBase64: buf.toString("base64"), sha256: row.sha256 };
+  return { filename: row.filename, contentType: row.content_type, contentBase64: buf.toString("base64"), sha256: row.sha256, warnings: JSON.parse(row.warnings) as string[] };
 }
