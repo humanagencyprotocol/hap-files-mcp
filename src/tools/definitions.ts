@@ -17,11 +17,20 @@ export const FILE_OUTPUT_SCHEMA = {
   required: ["filename", "contentType", "contentBase64", "sha256"],
 };
 
-export const TOOL_DEFINITIONS = [
+/** Where the AI must write a file before saving it — the real path, so it never has to ask the person. */
+export function folderSentence(env: NodeJS.ProcessEnv = process.env): string {
+  const folder = env.FILES_FOLDER;
+  return folder
+    ? `The shared folder is: ${folder} — write the file there first (you need to be able to write to this computer), then call this with its plain name. `
+    : "No shared folder is set up yet, so no file can be saved. A person opens **Connectors**, the card **Files**, enters the full path under **Shared folder** and presses **Save & Encrypt**. Suggest a folder (for example a new folder called suveren-files in their Documents) and give the person its exact full path to type; the folder must exist. Later they change it under **Edit credentials**. ";
+}
+
+/** The MCP tool surface. The folder comes from the environment the gateway started this connector with. */
+export function toolDefinitions(env: NodeJS.ProcessEnv = process.env) { return [
   {
     name: "save_file",
     description:
-      "Save a file that is in the shared files folder. Give only the plain file name (no folder, no path). " +
+      "Save a file that is in the shared files folder. " + folderSentence(env) + "Give only the plain file name (no folder, no path). " +
       "The connector copies the file once and checks it; the saved copy never changes. Allowed: PDF, PNG, JPEG, WebP, GIF, " +
       "MP4, WebM, Markdown and plain text, up to 18 MB. Word, Excel, SVG, HTML and zip files are refused. " +
       "Saving does not send anything.",
@@ -58,3 +67,6 @@ export const TOOL_DEFINITIONS = [
     outputSchema: FILE_OUTPUT_SCHEMA,
   },
 ];
+}
+
+export const TOOL_DEFINITIONS = toolDefinitions({});

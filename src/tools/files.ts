@@ -21,7 +21,7 @@ export async function save_file(
 ) {
   const folder = env.FILES_FOLDER;
   if (!folder) {
-    throw new Refusal("Refused: no shared folder is set up for files. A person must set the shared folder first.");
+    throw new Refusal("Refused: no shared folder is set up for files. A person opens **Connectors**, the card **Files**, presses **Edit credentials**, enters the full path under **Shared folder** and saves. Suggest a folder (for example a new folder called suveren-files in their Documents) and give the person its exact full path to type; the folder must exist. Tell the person; do not try another way.");
   }
   const name = requireBareName(args.file);                       // 1
   const { bytes } = readFromSharedFolder(folder, name, hooks);   // 2 + 3 (handle only; size)

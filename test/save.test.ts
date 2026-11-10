@@ -17,6 +17,17 @@ async function expectRefused(file: unknown, re: RegExp) {
 }
 
 describe("tool surface", () => {
+  it("save_file's description carries the real folder path", async () => {
+    const { tools } = await w.client.listTools();
+    expect(tools.find((t) => t.name === "save_file")!.description).toContain(`The shared folder is: ${w.folder}`);
+  });
+  it("without a folder the description says a person must choose one", async () => {
+    const wn = await startWorld({ folder: false });
+    try {
+      const { tools } = await wn.client.listTools();
+      expect(tools.find((t) => t.name === "save_file")!.description).toMatch(/No shared folder is set up yet.*Suggest a folder.*exact full path/s);
+    } finally { await wn.close(); }
+  });
   it("lists exactly the three tools, get_file has the ERP output shape", async () => {
     const { tools } = await w.client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(["get_file", "list_files", "save_file"]);
@@ -112,6 +123,11 @@ describe("rule 2: symlinks and non-regular files", () => {
     expect(ok.isError, JSON.stringify(ok.data)).toBe(false);
   });
   it("refuses a missing file", async () => { await expectRefused("nothing-here.pdf", /no such file/); });
+  it("a missing file's refusal names the real folder and the next step", async () => {
+    const r = await w.save("nothing-here.pdf");
+    expect(r.data.error).toContain(w.folder);
+    expect(r.data.error).toMatch(/Write the file into that folder, then call save_file again/);
+  });
 });
 
 describe("rule 3: size", () => {
@@ -300,7 +316,7 @@ describe("no shared folder set", () => {
     const wn = await startWorld({ folder: false });
     try {
       const r = await wn.save("a.png");
-      expect(r.isError).toBe(true); expect(r.data.error).toMatch(/no shared folder is set up/);
+      expect(r.isError).toBe(true); expect(r.data.error).toMatch(/no shared folder is set up/); expect(r.data.error).toMatch(/Edit credentials.*Shared folder.*Suggest a folder/s);
       expect((await wn.call("list_files", {})).data).toEqual([]);
       expect((await wn.call("get_file", { kind: "file", id: "x" })).isError).toBe(true);
     } finally { await wn.close(); }
