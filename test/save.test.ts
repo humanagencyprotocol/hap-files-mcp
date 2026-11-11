@@ -28,9 +28,9 @@ describe("tool surface", () => {
       expect(tools.find((t) => t.name === "save_file")!.description).toMatch(/No shared folder is set up yet.*Suggest a folder.*exact full path/s);
     } finally { await wn.close(); }
   });
-  it("lists exactly the three tools, get_file has the ERP output shape", async () => {
+  it("lists exactly the four tools, get_file has the ERP output shape", async () => {
     const { tools } = await w.client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(["get_file", "list_files", "save_file"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(["get_file", "get_status", "list_files", "save_file"]);
     const gd: any = tools.find((t) => t.name === "get_file");
     expect(Object.keys(gd.outputSchema.properties)).toEqual(["filename", "contentType", "contentBase64", "sha256", "warnings"]);
     expect(gd.outputSchema.required).toEqual(["filename", "contentType", "contentBase64", "sha256"]);

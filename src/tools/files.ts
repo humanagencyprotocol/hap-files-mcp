@@ -93,6 +93,15 @@ export async function list_files(db: Db, args: Record<string, any>, env: NodeJS.
   return { sharedFolder: check.folder ?? null, sharedFolderProblem: problem, files };
 }
 
+/**
+ * The connector's status for the gateway's card: why it cannot do its work now, in plain words for the
+ * person who looks at the card, or no `problem` when the shared folder can be used. Checked now, every call.
+ */
+export function get_status(env: NodeJS.ProcessEnv = process.env): { problem?: string } {
+  const check = checkSharedFolder(env);
+  return check.ok ? {} : { problem: check.problem };
+}
+
 /** Same result shape as the ERP connector's get_document. */
 export async function get_file(db: Db, args: Record<string, any>, env: NodeJS.ProcessEnv = process.env) {
   if (args.kind !== "file") throw new Error(`Unknown file kind: ${JSON.stringify(args.kind)} — expected "file".`);

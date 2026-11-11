@@ -19,6 +19,15 @@ export const FILE_OUTPUT_SCHEMA = {
   required: ["filename", "contentType", "contentBase64", "sha256"],
 };
 
+/** The gateway's status check (manifest `status.tool`): `problem` only when the folder cannot be used. */
+export const STATUS_OUTPUT_SCHEMA = {
+  type: "object",
+  title: "Status",
+  properties: {
+    problem: { type: "string", title: "Problem", description: "Why the connector cannot do its work now, for the person." },
+  },
+};
+
 /**
  * Where the AI must write a file before saving it — the real path, so it never has to ask the person —
  * or, when the folder cannot be used, the reason and the next step, checked now (see folder.ts).
@@ -76,6 +85,14 @@ export function toolDefinitions(env: NodeJS.ProcessEnv = process.env) { return [
       required: ["kind", "id"],
     },
     outputSchema: FILE_OUTPUT_SCHEMA,
+  },
+  {
+    name: "get_status",
+    description:
+      "Can the connector use the shared folder now? Used by the gateway to show the answer on the connector's card; " +
+      "answers `problem` (a sentence for the person) when it cannot, nothing when it can.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+    outputSchema: STATUS_OUTPUT_SCHEMA,
   },
 ];
 }

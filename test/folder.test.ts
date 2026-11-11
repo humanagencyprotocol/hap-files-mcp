@@ -256,3 +256,66 @@ describe("the three file refusals each name the folder and the next step", () =>
     } finally { await s.close(); }
   });
 });
+
+describe("get_status: the gateway's status check, for the connector's card", () => {
+  async function status(folder: string | undefined) {
+    const s = await start(folder);
+    try {
+      return await s.call("get_status", {});
+    } finally {
+      await s.close();
+    }
+  }
+
+  it.skipIf(!permissionsWork)("a folder this computer does not allow: problem is the plain reason", async () => {
+    const folder = path.join(root("status-blocked-"), "shared");
+    fs.mkdirSync(folder);
+    fs.chmodSync(folder, 0o000);
+    try {
+      const r = await status(folder);
+      expect(r.isError).toBe(false);
+      expect(r.data.problem).toContain(`The Files connector cannot use ${folder}: this computer does not allow it to read or write there (Permission denied).`);
+    } finally {
+      fs.chmodSync(folder, 0o700);
+    }
+  });
+
+  it("a usable folder: no problem, and no test file left behind", async () => {
+    const folder = path.join(root("status-ok-"), "shared");
+    fs.mkdirSync(folder);
+    const r = await status(folder);
+    expect(r.isError).toBe(false);
+    expect(r.data).toEqual({});
+    expect(leftovers(folder)).toEqual([]);
+  });
+
+  it("no folder set: says so", async () => {
+    const r = await status(undefined);
+    expect(r.data.problem).toBe("No shared folder is set up yet.");
+  });
+
+  it("answers structuredContent with a declared output schema", async () => {
+    const folder = path.join(root("status-schema-"), "shared");
+    fs.mkdirSync(folder);
+    const dataDir = path.join(root("data-"), "data");
+    const transport = new StdioClientTransport({
+      command: process.execPath, args: [DIST], stderr: "ignore",
+      env: { PATH: process.env.PATH ?? "", HAP_DATA_DIR: dataDir, HOME: os.homedir(), FILES_FOLDER: folder },
+    });
+    const client = new Client({ name: "t", version: "0" });
+    await client.connect(transport);
+    try {
+      const tool = (await client.listTools()).tools.find((t) => t.name === "get_status");
+      expect(tool?.outputSchema).toBeDefined();
+      fs.chmodSync(folder, 0o000);
+      const raw: any = await client.callTool({ name: "get_status", arguments: {} });
+      if (permissionsWork) expect(raw.structuredContent.problem).toContain(`cannot use ${folder}`);
+      fs.chmodSync(folder, 0o700);
+      const ok: any = await client.callTool({ name: "get_status", arguments: {} });
+      expect(ok.structuredContent).toEqual({});
+    } finally {
+      fs.chmodSync(folder, 0o700);
+      await client.close();
+    }
+  });
+});

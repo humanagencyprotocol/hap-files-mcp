@@ -10,6 +10,8 @@
   `{ sharedFolder, sharedFolderProblem?, files }` instead of a bare list.
 - Refusals tell apart "this computer does not allow it", "no such file in the folder" and "not inside the folder".
 - The suggested folder is directly in the home folder (for example `/Users/anna/suveren-files`), never Documents.
+- New `get_status` (no arguments): `{ problem? }`, the same folder check, for the gateway to show on the
+  connector's card. Internal to the gateway (manifest `status.tool`); the AI never sees it.
 
 ## 0.1.1
 

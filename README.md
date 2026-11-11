@@ -18,6 +18,7 @@ and never handles its bytes.
 | `save_file` | `{ file }` a plain file name in the shared folder | `{ id, filename, contentType, bytes, sha256, warnings[], sharedFolder }` |
 | `list_files` | `{ limit? }` | `{ sharedFolder, sharedFolderProblem?, files: [{ id, filename, contentType, bytes, sha256, created_at }] }` |
 | `get_file` | `{ kind: "file", id }` | `{ filename, contentType, contentBase64, sha256, warnings }` (the ERP connector's result shape plus the fixed warning sentences recorded at save; internal to the gateway) |
+| `get_status` | `{}` | `{ problem? }`: why the shared folder cannot be used now, a sentence for the person; nothing when it can (internal to the gateway, shown on the connector's card) |
 
 ## The shared folder check
 
