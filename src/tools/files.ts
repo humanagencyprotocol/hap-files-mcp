@@ -26,7 +26,7 @@ export async function save_file(
       throw new Refusal("Refused: no shared folder is set up for files. A person opens **Connectors**, the card **Files**, presses **Edit credentials**, enters the full path under **Shared folder** and saves. " +
         `${suggestFolderStep()} Tell the person; do not try another way.`);
     }
-    throw new Refusal(`Refused: the shared folder is set to ${check.folder}, but it cannot be used now. ${check.problem} ${CHANGE_FOLDER_STEP}`);
+    throw new Refusal(`Refused: ${check.problem} ${CHANGE_FOLDER_STEP}`);
   }
   const folder = check.folder;
   let bytes: Buffer, filename: string, contentType: string, warnings: string[];

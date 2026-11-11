@@ -68,7 +68,6 @@ describe("a folder this computer does not let the connector use (chmod 000)", ()
       expect(s.log()).toContain(reason);
       // What the AI is told before it tries.
       const d = await s.description();
-      expect(d).toContain(`The shared folder is set to ${folder}, but it cannot be used now.`);
       expect(d).toContain(reason);
       expect(d).toContain(`choose a folder directly in your home folder, such as ${suggestedFolder()}`.replace(/^c/, process.platform === "darwin" ? "c" : "C"));
       expect(d).toMatch(CHANGE_STEP);
@@ -80,6 +79,8 @@ describe("a folder this computer does not let the connector use (chmod 000)", ()
       expect(r.data.error).toContain(reason);
       expect(r.data.error).toMatch(CHANGE_STEP);
       expect(r.data.error).not.toMatch(/could not be opened/);
+      // The gateway shows a person the first 500 characters of a refusal: the reason and the suggested folder fit.
+      expect(r.data.error.slice(0, 500)).toContain(suggestedFolder());
       expect(s.store()).toEqual([]);
       // list_files still lists, and names the folder and the problem.
       const l = await s.call("list_files", {});

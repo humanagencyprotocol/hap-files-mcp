@@ -32,7 +32,7 @@ export function folderSentence(env: NodeJS.ProcessEnv = process.env): string {
     return "No shared folder is set up yet, so no file can be saved. A person opens **Connectors**, the card **Files**, enters the full path under **Shared folder** and presses **Save & Encrypt**. " +
       `${suggestFolderStep()} Later they change it under **Edit credentials**. `;
   }
-  return `The shared folder is set to ${check.folder}, but it cannot be used now. ${check.problem} ${CHANGE_FOLDER_STEP} `;
+  return `${check.problem} ${CHANGE_FOLDER_STEP} `;
 }
 
 /** The MCP tool surface. The folder comes from the environment the gateway started this connector with. */
