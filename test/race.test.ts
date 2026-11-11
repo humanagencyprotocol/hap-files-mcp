@@ -4,14 +4,14 @@ import path from "node:path";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createDb, type Db } from "../src/db.js";
 import { save_file } from "../src/tools/files.js";
-import { png } from "./helpers.js";
+import { png, scratchRoot } from "./helpers.js";
 
 let root: string, folder: string, data: string, db: Db, env: NodeJS.ProcessEnv;
 const secret = Buffer.concat([png(10), Buffer.from("SECRET-OUTSIDE-THE-FOLDER")]);
 const original = png(500);
 
 beforeEach(async () => {
-  root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "docs-race-")));
+  root = scratchRoot("docs-race-");
   folder = path.join(root, "shared"); data = path.join(root, "data"); fs.mkdirSync(folder);
   env = { HAP_DATA_DIR: data, FILES_FOLDER: folder };
   db = await createDb(env);

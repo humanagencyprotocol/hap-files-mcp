@@ -7,12 +7,18 @@ import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprot
 import { createDb } from "./db.js";
 import { save_file, list_files, get_file } from "./tools/files.js";
 import { toolDefinitions } from "./tools/definitions.js";
+import { checkSharedFolder } from "./lib/folder.js";
 
 async function main() {
   const db = await createDb();
 
+  // The folder is checked at start (the gateway restarts the connector when a person saves it). A folder
+  // that cannot be used does not stop the connector: its tools say why, so the AI can tell the person.
+  const check = checkSharedFolder();
+  console.error(check.ok ? `[files-mcp] shared folder ${check.folder}: usable` : `[files-mcp] shared folder problem: ${check.problem}`);
+
   const server = new Server(
-    { name: "files", version: "0.1.1" },
+    { name: "files", version: "0.1.2" },
     { capabilities: { tools: {} } },
   );
 

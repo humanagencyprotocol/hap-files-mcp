@@ -5,16 +5,20 @@ export class Refusal extends Error {}
 const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
 
 /** Rule 1: `file` is a bare name. Returns the name unchanged, or throws a plain refusal. */
-export function requireBareName(file: unknown, platform: NodeJS.Platform = process.platform): string {
+export function requireBareName(file: unknown, platform: NodeJS.Platform = process.platform, folder?: string): string {
   if (typeof file !== "string" || file.length === 0) {
     throw new Refusal("Refused: give the file name as plain text, for example \"report.pdf\".");
   }
   if (file.includes("\0")) throw new Refusal("Refused: the file name contains a NUL character.");
-  if (file.includes("/") || file.includes("\\")) {
-    throw new Refusal("Refused: give only the file name, not a path. The file must be in the shared folder.");
-  }
+  // Not inside the folder: the next step is the same for a relative and an absolute path.
+  const where = folder ? ` ${folder}` : "";
+  const notInside = `The file must be directly in the shared folder${where}; a file anywhere else is not read. ` +
+    "Write the file into that folder first, then call save_file again with its plain name.";
   if (path.posix.isAbsolute(file) || path.win32.isAbsolute(file)) {
-    throw new Refusal("Refused: give only the file name, not an absolute path.");
+    throw new Refusal(`Refused: give only the file name, not an absolute path. ${notInside}`);
+  }
+  if (file.includes("/") || file.includes("\\")) {
+    throw new Refusal(`Refused: give only the file name, not a path. ${notInside}`);
   }
   if (file === "." || file === "..") {
     throw new Refusal("Refused: \"..\" and \".\" are not file names.");

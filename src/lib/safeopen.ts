@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Refusal } from "./name.js";
+import { isBlocked, osWords } from "./folder.js";
 
 export const MAX_BYTES = 18_000_000; // 18 MB, the most an email carries (the mail connector's manifest declares the same limit)
 
@@ -31,6 +32,15 @@ function refuse(message: string): never {
   throw new Refusal(`Refused: ${message}`);
 }
 
+const noSuchFile = (folder: string, name: string) =>
+  `no such file "${name}" in the shared folder (${folder}). Write the file into that folder, then call save_file again with its plain name.`;
+
+/** The folder can be used (checked before), but this one file may not be read. */
+function notPermitted(folder: string, name: string, code: string | undefined): never {
+  refuse(`the file "${name}" is in the shared folder ${folder}, but this computer does not allow the Files connector to read it (${osWords(code)}). ` +
+    "Write a new copy of the file into the folder, or ask the person to allow reading it, then call save_file again.");
+}
+
 /** The shared folder itself must be a real directory, not a link. Its own parents may be links (macOS /tmp, /var). */
 function assertFolderNotLink(folder: string) {
   let st: fs.Stats;
@@ -51,7 +61,11 @@ export function readFromSharedFolder(folderSetting: string, name: string, hooks:
   if (path.dirname(full) !== folder) refuse("the file must be directly in the shared folder.");
 
   let pre: fs.BigIntStats;
-  try { pre = fs.lstatSync(full, { bigint: true }); } catch { refuse(`no such file "${name}" in the shared folder (${folder}). Write the file into that folder, then call save_file again with its plain name.`); }
+  try { pre = fs.lstatSync(full, { bigint: true }); } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (isBlocked(code)) notPermitted(folder, name, code);
+    refuse(noSuchFile(folder, name));
+  }
   if (pre.isSymbolicLink()) refuse("the file is a symbolic link.");
   if (!pre.isFile()) refuse("the file is not a regular file.");
 
@@ -63,8 +77,9 @@ export function readFromSharedFolder(folderSetting: string, name: string, hooks:
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
     if (code === "ELOOP" || code === "EMLINK") refuse("the file is a symbolic link.");
-    if (code === "ENOENT") refuse(`no such file "${name}" in the shared folder (${folder}). Write the file into that folder, then call save_file again with its plain name.`);
-    refuse("the file could not be opened.");
+    if (code === "ENOENT") refuse(noSuchFile(folder, name));
+    if (isBlocked(code)) notPermitted(folder, name, code);
+    refuse(`the file "${name}" in the shared folder ${folder} could not be opened (${osWords(code)}).`);
   }
   try {
     hooks.afterOpen?.(folder, name);

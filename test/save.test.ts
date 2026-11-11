@@ -9,11 +9,11 @@ beforeAll(async () => { w = await startWorld(); });
 afterAll(async () => { await w.close(); });
 
 async function expectRefused(file: unknown, re: RegExp) {
-  const before = (await w.call("list_files", {})).data.length;
+  const before = (await w.call("list_files", {})).data.files.length;
   const r = await w.save(file);
   expect(r.isError, JSON.stringify(r.data)).toBe(true);
   expect(r.data.error).toMatch(re);
-  expect((await w.call("list_files", {})).data.length).toBe(before);
+  expect((await w.call("list_files", {})).data.files.length).toBe(before);
 }
 
 describe("tool surface", () => {
@@ -144,7 +144,7 @@ describe("rule 3: size", () => {
       const bad = await wz.save("over.txt");
       expect(bad.isError).toBe(true); expect(bad.data.error).toMatch(/larger than 18 MB/);
       expect(wz.storeFiles().length).toBe(1);
-      expect((await wz.call("list_files", {})).data.length).toBe(1);
+      expect((await wz.call("list_files", {})).data.files.length).toBe(1);
     } finally { await wz.close(); }
   });
 });
@@ -255,7 +255,7 @@ describe("rule 6: store and immutability", () => {
   it("result shape, fingerprint of exactly the file bytes, readable-only copy", async () => {
     const buf = png(1000); w.put("shape.png", buf);
     const r = await w.save("shape.png");
-    expect(Object.keys(r.data).sort()).toEqual(["bytes", "contentType", "filename", "id", "sha256", "warnings"]);
+    expect(Object.keys(r.data).sort()).toEqual(["bytes", "contentType", "filename", "id", "sha256", "sharedFolder", "warnings"]);
     expect(r.data.sha256).toBe(sha256(buf)); expect(r.data.bytes).toBe(buf.length); expect(r.data.warnings).toEqual([]);
     const stored = path.join(w.dataDir, "files-store", r.data.id);
     expect(fs.readFileSync(stored).equals(buf)).toBe(true);
@@ -293,11 +293,11 @@ describe("rule 6: store and immutability", () => {
 
 describe("list_files and get_file", () => {
   it("lists newest first with the contract fields and honours limit", async () => {
-    const all = (await w.call("list_files", {})).data;
+    const all = (await w.call("list_files", {})).data.files;
     expect(all.length).toBeGreaterThan(3);
     expect(Object.keys(all[0]).sort()).toEqual(["bytes", "contentType", "created_at", "filename", "id", "sha256"]);
     const dates = all.map((d: any) => d.created_at); expect([...dates].sort().reverse()).toEqual(dates);
-    expect((await w.call("list_files", { limit: 2 })).data.length).toBe(2);
+    expect((await w.call("list_files", { limit: 2 })).data.files.length).toBe(2);
   });
   it("get_file returns the ERP shape; refuses unknown kind and id", async () => {
     w.put("fresh.png", png(77)); const id = (await w.save("fresh.png")).data.id;
@@ -317,7 +317,7 @@ describe("no shared folder set", () => {
     try {
       const r = await wn.save("a.png");
       expect(r.isError).toBe(true); expect(r.data.error).toMatch(/no shared folder is set up/); expect(r.data.error).toMatch(/Edit credentials.*Shared folder.*Suggest a folder/s);
-      expect((await wn.call("list_files", {})).data).toEqual([]);
+      expect((await wn.call("list_files", {})).data.files).toEqual([]);
       expect((await wn.call("get_file", { kind: "file", id: "x" })).isError).toBe(true);
     } finally { await wn.close(); }
   });

@@ -8,16 +8,35 @@ and never handles its bytes.
 
 | Variable | Meaning |
 |---|---|
-| `FILES_FOLDER` | The shared folder, set by a person (a full path; the folder itself must not be a symbolic link, its parents may be). Unset: `save_file` refuses; the other tools work. |
+| `FILES_FOLDER` | The shared folder, set by a person (a full path; the folder itself must not be a symbolic link, its parents may be). Suggest one directly in the home folder, such as `/Users/anna/suveren-files`. Unset: `save_file` refuses; the other tools work. |
 | `HAP_DATA_DIR` | Data directory (default `~/.hap`). Files are stored in `<dataDir>/files-store/`, the index in `<dataDir>/files.db` (SQLite). |
 
 ## Tools
 
 | Tool | Input | Output |
 |---|---|---|
-| `save_file` | `{ file }` a plain file name in the shared folder | `{ id, filename, contentType, bytes, sha256, warnings[] }` |
-| `list_files` | `{ limit? }` | `[{ id, filename, contentType, bytes, sha256, created_at }]` |
+| `save_file` | `{ file }` a plain file name in the shared folder | `{ id, filename, contentType, bytes, sha256, warnings[], sharedFolder }` |
+| `list_files` | `{ limit? }` | `{ sharedFolder, sharedFolderProblem?, files: [{ id, filename, contentType, bytes, sha256, created_at }] }` |
 | `get_file` | `{ kind: "file", id }` | `{ filename, contentType, contentBase64, sha256, warnings }` (the ERP connector's result shape plus the fixed warning sentences recorded at save; internal to the gateway) |
+
+## The shared folder check
+
+At start, when the tools are listed, and before every `save_file` and `list_files`, the connector checks
+the folder by doing what it needs there: it writes a small file (`.suveren-files-check-<random>`), reads it
+back and deletes it. There is no list of protected folders; the operating system answers:
+
+- macOS: privacy protection refuses a background program in Documents, Desktop, Downloads and iCloud
+  Drive (`Operation not permitted`), even when the AI app may write there.
+- Linux, macOS and Windows: plain permissions refuse with `Permission denied` (on Windows also
+  Controlled folder access, if it is on).
+
+A temporary system folder (`/tmp`, `/var/tmp`, `/var/folders` and their `/private` forms, `/dev/shm`, the
+OS temp folder, `TMPDIR`/`TEMP`/`TMP`, `C:\Windows\Temp`) is refused by name: other programs can read it
+and the computer empties it.
+
+A folder that cannot be used does not stop the connector. `save_file`'s description, every `save_file`
+refusal and every `list_files` answer say why, in plain words, with the next step. Every refusal names the
+folder.
 
 ## `save_file`, in this order (each failure is a plain refusal and stores nothing)
 

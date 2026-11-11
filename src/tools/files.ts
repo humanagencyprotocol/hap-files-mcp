@@ -7,6 +7,7 @@ import { requireBareName, filterFilename, Refusal } from "../lib/name.js";
 import { readFromSharedFolder, type OpenHooks } from "../lib/safeopen.js";
 import { detectType } from "../lib/detect.js";
 import { checkPdf } from "../lib/pdf.js";
+import { checkSharedFolder, CHANGE_FOLDER_STEP, suggestFolderStep } from "../lib/folder.js";
 
 const sha256 = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 const storeDir = (env: NodeJS.ProcessEnv) => path.join(dataDir(env), "files-store");
@@ -19,16 +20,29 @@ interface Row {
 export async function save_file(
   db: Db, args: Record<string, any>, env: NodeJS.ProcessEnv = process.env, hooks: OpenHooks = {},
 ) {
-  const folder = env.FILES_FOLDER;
-  if (!folder) {
-    throw new Refusal("Refused: no shared folder is set up for files. A person opens **Connectors**, the card **Files**, presses **Edit credentials**, enters the full path under **Shared folder** and saves. Suggest a folder (for example a new folder called suveren-files in their Documents) and give the person its exact full path to type; the folder must exist. Tell the person; do not try another way.");
+  const check = checkSharedFolder(env);                          // 0: the folder can be used now
+  if (!check.ok) {
+    if (check.folder === undefined) {
+      throw new Refusal("Refused: no shared folder is set up for files. A person opens **Connectors**, the card **Files**, presses **Edit credentials**, enters the full path under **Shared folder** and saves. " +
+        `${suggestFolderStep()} Tell the person; do not try another way.`);
+    }
+    throw new Refusal(`Refused: the shared folder is set to ${check.folder}, but it cannot be used now. ${check.problem} ${CHANGE_FOLDER_STEP}`);
   }
-  const name = requireBareName(args.file);                       // 1
-  const { bytes } = readFromSharedFolder(folder, name, hooks);   // 2 + 3 (handle only; size)
-  const filename = filterFilename(name);
-  const detected = detectType(bytes, filename);                  // 4
-  if (!detected.ok) throw new Refusal(detected.message);
-  const warnings = detected.contentType === "application/pdf" ? checkPdf(bytes) : []; // 5
+  const folder = check.folder;
+  let bytes: Buffer, filename: string, contentType: string, warnings: string[];
+  try {
+    const name = requireBareName(args.file, process.platform, folder); // 1
+    ({ bytes } = readFromSharedFolder(folder, name, hooks));       // 2 + 3 (handle only; size)
+    filename = filterFilename(name);
+    const detected = detectType(bytes, filename);                  // 4
+    if (!detected.ok) throw new Refusal(detected.message);
+    contentType = detected.contentType;
+    warnings = contentType === "application/pdf" ? checkPdf(bytes) : []; // 5
+  } catch (e) {
+    // Every refusal names the folder, so the AI never has to ask for it.
+    if (e instanceof Refusal && !e.message.includes(folder)) throw new Refusal(`${e.message} The shared folder is ${folder}.`);
+    throw e;
+  }
 
   // 6: the very bytes read in step 2.
   const id = randomUUID();
@@ -51,25 +65,32 @@ export async function save_file(
   try {
     db.run(
       "INSERT INTO files (id, filename, content_type, bytes, sha256, created_at, ticket_id, warnings) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      [id, filename, detected.contentType, bytes.length, digest, new Date().toISOString(), ticketId, JSON.stringify(warnings)],
+      [id, filename, contentType, bytes.length, digest, new Date().toISOString(), ticketId, JSON.stringify(warnings)],
     );
   } catch (e) {
     fs.rmSync(dest, { force: true });
     throw e;
   }
-  return { id, filename, contentType: detected.contentType, bytes: bytes.length, sha256: digest, warnings };
+  return { id, filename, contentType: contentType, bytes: bytes.length, sha256: digest, warnings, sharedFolder: folder };
 }
 
-export async function list_files(db: Db, args: Record<string, any>) {
+/** The saved files, and the shared folder: its path, and the reason when it cannot be used now. */
+export async function list_files(db: Db, args: Record<string, any>, env: NodeJS.ProcessEnv = process.env) {
   let limit = Number.isFinite(args.limit) ? Math.floor(args.limit) : 50;
   limit = Math.min(Math.max(limit, 1), 500);
   const rows = db.all<Row>(
     "SELECT id, filename, content_type, bytes, sha256, created_at FROM files ORDER BY created_at DESC, rowid DESC LIMIT ?",
     [limit],
   );
-  return rows.map((r) => ({
+  const files = rows.map((r) => ({
     id: r.id, filename: r.filename, contentType: r.content_type, bytes: r.bytes, sha256: r.sha256, created_at: r.created_at,
   }));
+  const check = checkSharedFolder(env);
+  if (check.ok) return { sharedFolder: check.folder, files };
+  const problem = check.folder === undefined
+    ? `No shared folder is set up yet, so no file can be saved. A person opens **Connectors**, the card **Files**, presses **Edit credentials**, enters the full path under **Shared folder** and saves. ${suggestFolderStep()}`
+    : `${check.problem} ${CHANGE_FOLDER_STEP}`;
+  return { sharedFolder: check.folder ?? null, sharedFolderProblem: problem, files };
 }
 
 /** Same result shape as the ERP connector's get_document. */
