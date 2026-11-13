@@ -18,9 +18,19 @@ export interface World {
   close(): Promise<void>;
 }
 
-/** A real MCP server (the built dist/index.js) over stdio, on a real temp folder (real path, no symlinks above it). */
+/**
+ * A scratch root for one test, real path. Inside this repo, not the system temp folder: the connector
+ * refuses a shared folder there (see src/lib/folder.ts). Gitignored.
+ */
+export const WORK = path.resolve(__dirname, "../.test-work");
+export function scratchRoot(prefix: string): string {
+  fs.mkdirSync(WORK, { recursive: true });
+  return fs.realpathSync(fs.mkdtempSync(path.join(WORK, prefix)));
+}
+
+/** A real MCP server (the built dist/index.js) over stdio, on a real scratch folder (real path, no symlinks above it). */
 export async function startWorld(opts: { folder?: boolean } = {}): Promise<World> {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "files-mcp-")));
+  const root = scratchRoot("files-mcp-");
   const folder = path.join(root, "shared");
   const dataDir = path.join(root, "data");
   fs.mkdirSync(folder);

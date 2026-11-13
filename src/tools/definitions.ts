@@ -1,4 +1,6 @@
 /** The MCP tool surface — kept in its own module so tests can read it without starting the server. */
+import { checkSharedFolder, CHANGE_FOLDER_STEP, suggestFolderStep } from "../lib/folder.js";
+
 const TICKET_FIELD = {
   type: "string" as const,
   description: "Ticket reference for this call, set by the governing gateway — agents do not set this.",
@@ -17,12 +19,29 @@ export const FILE_OUTPUT_SCHEMA = {
   required: ["filename", "contentType", "contentBase64", "sha256"],
 };
 
-/** Where the AI must write a file before saving it — the real path, so it never has to ask the person. */
+/** The gateway's status check (manifest `status.tool`): `problem` only when the folder cannot be used. */
+export const STATUS_OUTPUT_SCHEMA = {
+  type: "object",
+  title: "Status",
+  properties: {
+    problem: { type: "string", title: "Problem", description: "Why the connector cannot do its work now, for the person." },
+  },
+};
+
+/**
+ * Where the AI must write a file before saving it — the real path, so it never has to ask the person —
+ * or, when the folder cannot be used, the reason and the next step, checked now (see folder.ts).
+ */
 export function folderSentence(env: NodeJS.ProcessEnv = process.env): string {
-  const folder = env.FILES_FOLDER;
-  return folder
-    ? `The shared folder is: ${folder} — write the file there first (you need to be able to write to this computer), then call this with its plain name. `
-    : "No shared folder is set up yet, so no file can be saved. A person opens **Connectors**, the card **Files**, enters the full path under **Shared folder** and presses **Save & Encrypt**. Suggest a folder (for example a new folder called suveren-files in their Documents) and give the person its exact full path to type; the folder must exist. Later they change it under **Edit credentials**. ";
+  const check = checkSharedFolder(env);
+  if (check.ok) {
+    return `The shared folder is: ${check.folder} — write the file there first (you need to be able to write to this computer), then call this with its plain name. `;
+  }
+  if (check.folder === undefined) {
+    return "No shared folder is set up yet, so no file can be saved. A person opens **Connectors**, the card **Files**, enters the full path under **Shared folder** and presses **Save & Encrypt**. " +
+      `${suggestFolderStep()} Later they change it under **Edit credentials**. `;
+  }
+  return `${check.problem} ${CHANGE_FOLDER_STEP} `;
 }
 
 /** The MCP tool surface. The folder comes from the environment the gateway started this connector with. */
@@ -45,7 +64,8 @@ export function toolDefinitions(env: NodeJS.ProcessEnv = process.env) { return [
   },
   {
     name: "list_files",
-    description: "List saved files, newest first: id, file name, content type, size and SHA-256 fingerprint.",
+    description: "List saved files, newest first: id, file name, content type, size and SHA-256 fingerprint. " +
+      "The answer also names the shared folder and says if it cannot be used.",
     inputSchema: {
       type: "object",
       properties: { limit: { type: "number", description: "Maximum results (default 50, at most 500)" } },
@@ -65,6 +85,14 @@ export function toolDefinitions(env: NodeJS.ProcessEnv = process.env) { return [
       required: ["kind", "id"],
     },
     outputSchema: FILE_OUTPUT_SCHEMA,
+  },
+  {
+    name: "get_status",
+    description:
+      "Can the connector use the shared folder now? Used by the gateway to show the answer on the connector's card; " +
+      "answers `problem` (a sentence for the person) when it cannot, nothing when it can.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+    outputSchema: STATUS_OUTPUT_SCHEMA,
   },
 ];
 }
